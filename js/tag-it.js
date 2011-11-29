@@ -136,7 +136,7 @@
             // Add existing tags from the list, if any.
             this.tagList.children('li').each(function() {
                 if (!$(this).hasClass('tagit-new')) {
-                    that.createTag($(this).html(), $(this).attr('class'));
+                    that.createTag($(this).html(), $(this).attr('class'), true);
                     $(this).remove();
                 }
             });
@@ -149,7 +149,7 @@
                     var tags = node.val().split(this.options.singleFieldDelimiter);
                     node.val('');
                     $.each(tags, function(index, tag) {
-                        that.createTag(tag);
+                        that.createTag(tag, null, false);
                     });
                 } else {
                     // Create our single field input after our list.
@@ -197,7 +197,7 @@
                         )
                     ) {
                         event.preventDefault();
-                        that.createTag(that._cleanedInput());
+                        that.createTag(that._cleanedInput(), null, false);
 
                         // The autocomplete doesn't close automatically when TAB is pressed.
                         // So let's ensure that it closes.
@@ -205,27 +205,31 @@
                     }
                 }).blur(function(e){
                     // Create a tag when the element loses focus (unless it's empty).
-                    that.createTag(that._cleanedInput());
+                    that.createTag(that._cleanedInput(), null, false);
                 });
-                
+
 
             // Autocomplete.
+			this._autocompleteVal = null;
+			this._selectAction = function(event, ui) {
+				if (that._tagInput.val() == that._autocompleteVal) {
+					that.createTag(that._autocompleteVal, null, true);
+					// Preventing the tag input to be updated with the chosen value.
+					that.tagList.children('.tagit-new').children('input').val('');
+					return false;
+				}
+			}
             if (this.options.availableTags || this.options.tagSource) {
                 this._tagInput.autocomplete({
                     source: this.options.tagSource,
-                    select: function(event, ui) {
-                        // Delete the last tag if we autocomplete something despite the input being empty
-                        // This happens because the input's blur event causes the tag to be created when
-                        // the user clicks an autocomplete item.
-                        // The only artifact of this is that while the user holds down the mouse button
-                        // on the selected autocomplete item, a tag is shown with the pre-autocompleted text,
-                        // and is changed to the autocompleted text upon mouseup.
-                        if (that._tagInput.val() === '') {
-                            that.removeTag(that._lastTag(), false);
-                        }
-                        that.createTag(ui.item.value);
-                        // Preventing the tag input to be updated with the chosen value.
-                        return false;
+                    close: this._selectAction,
+					select: this._selectAction,
+					minLength: 2,
+					autoFocus: true,
+					focus: function(event, ui) {
+                        that._autocompleteVal = ui.item.value;
+						$('input.ui-autocomplete-input').val(that._unescapeHTML(ui.item.value));
+						return false;
                     }
                 });
             }
@@ -285,7 +289,7 @@
             var that = this;
             var isNew = true;
             this.tagList.children('.tagit-choice').each(function(i) {
-                if (that._formatStr(value) == that._formatStr(that.tagLabel(this))) {
+                if (that._formatStr(urlEncode(value)) == that._formatStr(that.tagLabel(this))) {
                     isNew = false;
                     return false;
                 }
@@ -300,7 +304,14 @@
             return $.trim(str.toLowerCase());
         },
 
-        createTag: function(value, additionalClass) {
+        _unescapeHTML: function(str) {
+        	return $('<div/>').html(str).text();
+        },
+
+        createTag: function(value, additionalClass, unescape) {
+			// Unescape potentially HTML-escaped value
+			if(unescape) value = this._unescapeHTML(value);
+
             var that = this;
             // Automatically trims the value of leading and trailing whitespace.
             value = $.trim(value);
@@ -335,7 +346,7 @@
                 tags.push(value);
                 this._updateSingleTagsField(tags);
             } else {
-                var escapedValue = label.html();
+                var escapedValue = urlEncode(value);
                 tag.append('<input type="hidden" style="display:none;" value="' + escapedValue + '" name="' + this.options.itemName + '[' + this.options.fieldName + '][]" />');
             }
 
